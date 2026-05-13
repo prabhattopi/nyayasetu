@@ -1,42 +1,63 @@
 import { ChatGroq } from "@langchain/groq";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { StateType } from "./state";
 import { supabase } from "../supabase/client";
 
-// Initialize our blazing-fast Groq model
+// The Inference Engine (Fast Generation)
 const llm = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  modelName: "llama3-8b-8192", 
-  temperature: 0, // Keep it strictly factual for legal data
+  model: "llama-3.1-8b-instant", 
+  temperature: 0, 
+});
+
+// lib/langgraph/nodes.ts (Top of the file)
+const embeddings = new GoogleGenerativeAIEmbeddings({
+  model: "gemini-embedding-001", // FIX: Updated to the newest 2026 unified model
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 /**
  * NODE 1: The Retriever
- * Searches Supabase for relevant legal documents.
+ * Converts the user's question to a vector, then searches Supabase.
  */
 export async function retrieve(state: StateType): Promise<Partial<StateType>> {
-  console.log("---RETRIEVING LEGAL CONTEXT---");
+  console.log("---RETRIEVING LEGAL CONTEXT FROM SUPABASE---");
   const { question, iterations } = state;
 
-  // Note: In production, you will convert the `question` into a vector embedding here 
-  // before calling Supabase. For now, we mock the vector search response structure.
-  
-  // Example Supabase RPC call (assuming you generated an embedding for the question):
-  // const { data } = await supabase.rpc('match_legal_documents', {
-  //   query_embedding: your_generated_vector, match_threshold: 0.7, match_count: 3
-  // });
-  
-  const mockRetrievedContext = "Section 378 of IPC: Theft. Whoever, intending to take dishonestly any moveable property out of the possession of any person without that person’s consent, moves that property in order to such taking, is said to commit theft.";
+  try {
+    // 1. Convert the user's question into a 768-dimensional vector
+    const queryVector = await embeddings.embedQuery(question);
 
-  return {
-    context: mockRetrievedContext, // In reality, map `data` to a string
-    iterations: iterations + 1,
-  };
+    // 2. Perform semantic search via our Supabase RPC function
+    const { data, error } = await supabase.rpc('match_legal_documents', {
+      query_embedding: queryVector,
+      match_threshold: 0.5, // 50% similarity threshold
+      match_count: 4        // Fetch top 4 most relevant chunks
+    });
+
+    if (error) throw error;
+
+    // 3. Compile the retrieved documents into a single context string
+    const retrievedContext = data && data.length > 0 
+      ? data.map((doc: any) => `[Document ID: ${doc.id} | Metadata: ${JSON.stringify(doc.metadata)}]\n${doc.content}`).join("\n\n---\n\n")
+      : "No relevant legal statutes found in the verified database.";
+
+    return {
+      context: retrievedContext,
+      iterations: iterations + 1,
+    };
+  } catch (error) {
+    console.error("Supabase Retrieval Error:", error);
+    return {
+      context: "Database connection failed. Proceed with caution.",
+      iterations: iterations + 1,
+    };
+  }
 }
 
 /**
  * NODE 2: The Grader
- * Evaluates if the retrieved context is actually relevant to the question.
  */
 export async function gradeDocuments(state: StateType): Promise<Partial<StateType>> {
   console.log("---GRADING DOCUMENT RELEVANCE---");
@@ -51,27 +72,25 @@ export async function gradeDocuments(state: StateType): Promise<Partial<StateTyp
     new HumanMessage(`Context: \n\n ${context} \n\n Question: ${question}`),
   ]);
 
-  // Parse the JSON output from the LLM
   try {
     const output = JSON.parse(response.content as string);
     return { isRelevant: output.isRelevant };
   } catch (e) {
-    return { isRelevant: false }; // Failsafe
+    return { isRelevant: false }; 
   }
 }
 
 /**
  * NODE 3: The Generator
- * Synthesizes the final answer using ONLY the verified context.
  */
 export async function generate(state: StateType): Promise<Partial<StateType>> {
   console.log("---GENERATING FINAL RESPONSE---");
-  const { question, context, messages } = state;
+  const { question, context } = state;
 
   const systemPrompt = `You are NyayaSetu, an AI Legal Assistant for Indian citizens. 
   Answer the user's question based strictly on the following context. 
-  Do not hallucinate. If the context does not contain the answer, say "I cannot provide a legal opinion on this based on the verified statutes."
-  Explain the law in simple, easy-to-understand terms.`;
+  If the context says "No relevant legal statutes found", strictly reply: "I cannot provide a legal opinion as I could not find verified statutes regarding this in my database."
+  Do not hallucinate facts outside the context. Explain the law in simple, easy-to-understand terms.`;
 
   const response = await llm.invoke([
     new SystemMessage(systemPrompt),
