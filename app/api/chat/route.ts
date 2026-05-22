@@ -21,11 +21,10 @@ export async function POST(req: NextRequest) {
     const aiResponse = finalState.messages[finalState.messages.length - 1];
 
     if (userId && finalState.isRelevant) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0]; // Gets 'YYYY-MM-DD'
       
       const { data: profile } = await supabase
         .from('user_progress')
-        // FIX: You MUST include 'legal_iq' right here in the select string!
         .select('last_active, current_streak, legal_iq') 
         .eq('user_id', userId)
         .single();
@@ -41,14 +40,26 @@ export async function POST(req: NextRequest) {
           newStreak = (lastActiveDate === yesterdayStr) ? newStreak + 1 : 1;
         }
 
+        const newLegalIq = profile.legal_iq + 5;
+
+        // 1. Update the main profile
         await supabase
           .from('user_progress')
           .update({ 
             current_streak: newStreak, 
             last_active: new Date().toISOString(),
-            legal_iq: profile.legal_iq + 5 
+            legal_iq: newLegalIq 
           })
           .eq('user_id', userId);
+
+        // 2. NEW: Save the daily snapshot for the Analytics Charts!
+        await supabase
+          .from('xp_history')
+          .upsert({
+            user_id: userId,
+            legal_iq: newLegalIq,
+            recorded_at: today
+          }, { onConflict: 'user_id, recorded_at' }); // Upsert prevents duplicate rows for the same day
       }
     }
 

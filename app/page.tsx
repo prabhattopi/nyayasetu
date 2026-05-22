@@ -1,47 +1,48 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalyticsChart } from "@/components/dashboard/AnalyticsChart";
 import { BookOpen, Flame, Trophy, ShieldAlert } from "lucide-react";
 
-// In Next.js 16 App Router, we can make our pages async to fetch data directly on the server!
 export default async function Home() {
-  // 1. Securely get the authenticated user's ID
-  const { userId } = await auth();
+  const user = await currentUser();
 
-  if (!userId) {
-    return null; // The proxy will catch this and redirect, but this is a failsafe
-  }
+  if (!user) return null; 
 
-  // 2. Fetch their progress from Supabase
+  const firstName = user.firstName || "Citizen";
+
+  // 1. Fetch current progress
   let { data: progress } = await supabase
     .from("user_progress")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .single();
 
-  // 3. If they are a brand new user, initialize their stats!
   if (!progress) {
-    const { data: newProgress, error } = await supabase
+    const { data: newProgress } = await supabase
       .from("user_progress")
-      .insert([{ user_id: userId, legal_iq: 100, current_streak: 0 }])
+      .insert([{ user_id: user.id, legal_iq: 100, current_streak: 0 }])
       .select()
       .single();
     
-    if (error) {
-      console.error("Error creating user stats:", error);
-    }
     progress = newProgress || { legal_iq: 100, current_streak: 0 };
   }
+
+  // 2. Fetch history for the chart
+  const { data: history } = await supabase
+    .from("xp_history")
+    .select("legal_iq, recorded_at")
+    .eq("user_id", user.id)
+    .order("recorded_at", { ascending: true })
+    .limit(7); // We only need 7 days for the dashboard
 
   return (
     <div className="flex flex-col flex-1 items-start gap-6 p-4 sm:px-6 sm:py-4 md:gap-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Welcome back, Citizen</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Welcome back, {firstName}</h1>
         <p className="text-muted-foreground">Here is your daily legal learning summary.</p>
       </div>
       
-      {/* Top Gamification Stats - NOW DYNAMIC! */}
       <div className="grid gap-4 w-full md:grid-cols-2 lg:grid-cols-3">
         <Card className="bg-primary/5 border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -49,7 +50,6 @@ export default async function Home() {
             <Flame className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            {/* Injecting real database numbers */}
             <div className="text-2xl font-bold">{progress?.current_streak} Days</div>
             <p className="text-xs text-muted-foreground mt-1">Complete a quiz to increase this!</p>
           </CardContent>
@@ -61,7 +61,6 @@ export default async function Home() {
             <Trophy className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            {/* Injecting real database numbers */}
             <div className="text-2xl font-bold">{progress?.legal_iq} XP</div>
             <p className="text-xs text-muted-foreground mt-1">Keep chatting with the AI to level up.</p>
           </CardContent>
@@ -79,12 +78,11 @@ export default async function Home() {
         </Card>
       </div>
 
-      {/* Analytics and Recent Activity */}
       <div className="grid gap-4 w-full md:gap-8 lg:grid-cols-3">
-        {/* We leave the chart mock data for now, but it's ready to accept real arrays! */}
-        <AnalyticsChart />
+        {/* 3. Pass the fetched history to our chart */}
+        <AnalyticsChart data={history || []} currentIq={progress?.legal_iq} />
 
-        <Card className="col-span-full lg:col-span-1 border-primary/10 shadow-md">
+        <Card className="col-span-full lg:col-span-1 border-primary/10 shadow-md bg-card/50">
           <CardHeader>
             <CardTitle>Focus Areas</CardTitle>
             <CardDescription>Topics that need your attention.</CardDescription>

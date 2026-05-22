@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-// Mock data spanning a longer period
-const thirtyDayData = Array.from({ length: 30 }, (_, i) => ({
-  day: `Day ${i + 1}`,
-  iqScore: 100 + Math.floor(i * 1.5) + Math.floor(Math.random() * 5),
-})).slice(-30);
+// Accept the real data from the database
+interface AdvancedAnalyticsProps {
+  realData?: { legal_iq: number; recorded_at: string }[];
+  currentIq?: number;
+}
 
 const topicMasteryData = [
   { topic: "Criminal (BNS)", score: 85 },
@@ -19,21 +19,30 @@ const topicMasteryData = [
   { topic: "Family Law", score: 30 },
 ];
 
-export function AdvancedAnalytics() {
+export function AdvancedAnalytics({ realData = [], currentIq = 100 }: AdvancedAnalyticsProps) {
   const [isMounted, setIsMounted] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<"7d" | "30d" | "all">("7d");
+  const [timeFilter, setTimeFilter] = useState<"7d" | "30d">("7d");
 
   useEffect(() => setIsMounted(true), []);
 
-  // Filter the data based on state
-  const chartData = timeFilter === "7d" ? thirtyDayData.slice(-7) : thirtyDayData;
+  // Format the raw DB data into what the chart expects
+  const processedData = realData.length > 0 
+    ? realData.map((row) => ({
+        day: new Date(row.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        iqScore: row.legal_iq,
+      }))
+    // Fallback if the user is brand new and has no history yet
+    : Array.from({ length: 7 }, (_, i) => ({ day: `Day ${i + 1}`, iqScore: currentIq }));
+
+  // Slice the data based on the selected filter
+  const chartData = timeFilter === "7d" ? processedData.slice(-7) : processedData.slice(-30);
 
   if (!isMounted) return <div className="h-[400px] w-full animate-pulse bg-muted rounded-xl"></div>;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
       {/* Primary XP Growth Chart */}
-      <Card className="col-span-full lg:col-span-4 border-primary/10 shadow-md">
+      <Card className="col-span-full lg:col-span-4 border-primary/10 shadow-md bg-card/50">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <CardTitle>Knowledge Growth</CardTitle>
@@ -65,8 +74,8 @@ export function AdvancedAnalytics() {
         </CardContent>
       </Card>
 
-      {/* Topic Mastery Radar/Bar Chart */}
-      <Card className="col-span-full lg:col-span-3 border-primary/10 shadow-md">
+      {/* Topic Mastery Bar Chart */}
+      <Card className="col-span-full lg:col-span-3 border-primary/10 shadow-md bg-card/50">
         <CardHeader>
           <CardTitle>Topic Mastery</CardTitle>
           <CardDescription>Accuracy across different legal domains.</CardDescription>
