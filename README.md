@@ -6,14 +6,21 @@
   <a href="https://github.com/sponsors/prabhattopi">
     <img src="https://img.shields.io/badge/Sponsor_Prabhat-%E2%9D%A4-pink?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor Prabhat" height="30" />
   </a>
-  <br />
-  <br />
+  <br /><br />
 
   [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
   [![Supabase](https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=flat-square&logo=supabase)](https://supabase.com/)
   [![LangGraph](https://img.shields.io/badge/LangGraph-Agents-blue?style=flat-square&logo=langchain)](https://js.langchain.com/)
   [![Clerk](https://img.shields.io/badge/Auth-Clerk-6C47FF?style=flat-square)](https://clerk.com/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
+  <br />
+
+  <!-- 🎯 HERO ARCHITECTURE DIAGRAM -->
+  <img src="./docs/images/architecture.svg" alt="NyayaSetu Architecture Diagram" width="900" />
+  
+  <p><em>End-to-end Agentic RAG pipeline powering NyayaSetu</em></p>
+
 </div>
 
 <br/>
@@ -39,7 +46,57 @@
 | **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Framer Motion, Recharts |
 | **Backend & AI** | Node.js, LangGraph, LangChain, Groq (Llama 3.1), Google Generative AI (Embeddings) |
 | **Database** | Supabase (PostgreSQL), `pgvector` extension, WebSockets (Realtime) |
-| **Auth & Security**| Clerk v7, Next.js Middleware |
+| **Auth & Security** | Clerk v7, Next.js Middleware |
+
+---
+
+## 🏗️ Architecture: Agentic RAG Flow
+
+<div align="center">
+  <img src="./docs/images/architecture.svg" alt="Detailed Architecture Diagram" width="100%" />
+</div>
+
+<br />
+
+The diagram above shows the complete flow from user authentication to real-time leaderboard updates. Here's a breakdown of each stage:
+
+<table>
+  <tr>
+    <td width="60"><h3>1️⃣</h3></td>
+    <td>
+      <strong>Query Submission</strong><br/>
+      Authenticated users submit legal questions via the Next.js chat interface, which routes to <code>POST /api/chat</code>.
+    </td>
+  </tr>
+  <tr>
+    <td><h3>2️⃣</h3></td>
+    <td>
+      <strong>Vector Retrieval</strong><br/>
+      The query is converted into a <strong>3072-dimensional embedding</strong> using <strong>Gemini</strong> and searched against <strong>pgvector</strong> via cosine similarity.
+    </td>
+  </tr>
+  <tr>
+    <td><h3>3️⃣</h3></td>
+    <td>
+      <strong>LangGraph Grading</strong><br/>
+      The agentic state machine evaluates retrieved documents. Irrelevant results trigger a <strong>safe fallback</strong> to prevent hallucinations.
+    </td>
+  </tr>
+  <tr>
+    <td><h3>4️⃣</h3></td>
+    <td>
+      <strong>Answer Generation</strong><br/>
+      <strong>Groq (Llama 3.1)</strong> synthesizes a clear response grounded strictly in retrieved statutes.
+    </td>
+  </tr>
+  <tr>
+    <td><h3>5️⃣</h3></td>
+    <td>
+      <strong>Reward & Realtime Sync</strong><br/>
+      XP is upserted to Supabase, triggering WebSocket broadcasts that update the live leaderboard instantly.
+    </td>
+  </tr>
+</table>
 
 ---
 
